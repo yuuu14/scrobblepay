@@ -16,20 +16,20 @@
 ## Project Architecture
 
 ```
-User's music listening (Spotify)
-       ↓ scrobble
+User's music listening (Spotify, all month)
+       ↓ scrobbles accumulate
   Last.fm API
        ↓
-  scrobble_agent.py  ←  🤖 AI Agent (Python, your main code)
+  scrobble_agent.py  ←  🤖 AI Agent (runs end-of-period)
        │
-       ├── fetch recent scrobbles
+       ├── fetch all recent scrobbles for the period
        ├── aggregate by artist
-       ├── calculate per-artist splits
+       ├── calculate per-artist splits (formula: plays/total × budget)
        └── [--execute] send nanopayments on Arc via web3.py
               ↓
-         Arc Testnet RPC → USDC transfer
+         Arc Testnet RPC → sequential USDC transfers (batch)
               ↓
-         Artists receive nanopayments
+         Each artist gets their fair share — no pool, no middleman
 ```
 
 ## File Map
@@ -46,6 +46,15 @@ User's music listening (Spotify)
 | `docs/circle-usage.md` | — | Circle CLI / Arc docs |
 
 ## Key Concepts
+
+### Model: Monthly Batch Settlement
+- **Not per-play real-time payments.** Scrobbles accumulate all month, then the agent runs once to calculate splits and send all payments in one batch.
+- Budget is fixed (e.g. $5/month), split proportionally by actual plays.
+- This avoids: (a) running out of budget mid-month, (b) excessive gas costs from thousands of micro-transactions.
+
+### Why Nanopayments
+- A single batch of 24 micro-payments ($0.01–$0.50 each) costs ~$0.01 in Arc fees.
+- Traditional rails would charge $0.30+/tx, making sub-cent payouts uneconomical.
 
 ### Nanopayment on Arc
 - Native token is USDC (18 decimals, use `w3.to_wei(amount, "ether")`)
@@ -82,15 +91,16 @@ User's music listening (Spotify)
 
 | ID | Priority | Summary | Key File | 
 |----|----------|---------|----------|
-| SCR-001 | 🔴 P0 | Agent holds private key, sends Arc tx autonomously | `agents/scrobble_agent.py` |
-| SCR-002 | 🔴 P0 | LLM-powered payment decisions with reasoning trace | `agents/scrobble_agent.py` |
-| SCR-003 | 🔴 P0 | Deploy server to public URL | `src/server.ts` |
-| SCR-004 | 🟡 P1 | x402 paywalled scrobble endpoint | `src/server.ts` |
-| SCR-005 | 🟡 P1 | On-chain splitter contract | `contracts/Splitter.sol` |
-| SCR-006 | 🟡 P1 | Scheduled weekly agent runs | cron + agent script |
-| SCR-007 | 🟢 P2 | Real-time scrobble → instant payment | `agents/realtime_agent.py` |
-| SCR-008 | 🟢 P2 | Payment history dashboard | `public/dashboard.html` |
-| SCR-009 | 🟢 P2 | Agent-to-agent autonomous payments | `agents/consumer_agent.py` |
+| SCR-001 | 🔴 P0 | **Done** — Self-custodial wallet + batch send on Arc | `agents/scrobble_agent.py` |
+| SCR-002 | 🔴 P0 | Deploy server to public URL | `src/server.ts` |
+| SCR-003 | 🟡 P1 | x402 paywalled scrobble endpoint | `src/server.ts` |
+| SCR-004 | 🟡 P1 | On-chain splitter contract | `contracts/Splitter.sol` |
+| SCR-005 | 🟡 P1 | Scheduled monthly agent runs | cron + agent script |
+| SCR-006 | 🟢 P2 | Real-time scrobble per-play payment (experimental) | `agents/realtime_agent.py` |
+| SCR-007 | 🟢 P2 | Payment history dashboard | `public/dashboard.html` |
+| SCR-008 | 🟢 P2 | Agent-to-agent autonomous payments (post-hackathon) | `agents/consumer_agent.py` |
+
+**Core model:** Monthly batch settlement — scrobbles accumulate, then the agent runs end-of-period to calculate fair splits and send all payments in one batch on Arc. Not per-play real-time payments.
 
 ## Common Commands
 

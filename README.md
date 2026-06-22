@@ -6,16 +6,16 @@ Lepton Agents Hackathon · Canteen × Circle
 
 Every music streaming subscription is a quiet admission that the real unit was too small to sell on its own. You pay $10/month, but 99% of that goes to mainstream artists, not the independent musicians you actually listen to.
 
-**Nanopayments fix this.** Each play can now cost $0.0001, settled in under half a second on Arc for ~$0.01 in USDC fees.
+**User-centric royalties fix this.** Instead of pooling your payment with millions of other users, your budget is split only among the artists you actually listened to. Arc's batched settlement makes it economical to send 24 micro-payments for a total fee of ~$0.01 — something traditional payment rails could never do for sub-cent amounts.
 
 ## What This Builds
 
 An AI agent that:
 
 1. **Reads your Last.fm scrobbles** — works with Spotify, Apple Music, Deezer, etc.
-2. **Aggregates per-artist play counts** — tracks every artist you listened to
-3. **Calculates fair splits** — `$X ÷ your plays × artist plays`
-4. **Executes nanopayments** — sends USDC per artist via Circle CLI on Arc L1
+2. **Aggregates per-artist play counts** — tracks every artist you listened to this period
+3. **Calculates fair splits** — `$budget ÷ your total plays × artist plays`
+4. **Batch-settles nanopayments** — sends USDC per artist on Arc, settled in one batch at the end of each period
 
 ## Tech Stack
 
@@ -68,11 +68,13 @@ npm run agent -- --user YOUR_LASTFM_USER --budget 5.0 --execute
 
 Tasks designed for coding agents (Claude Code, Codex, etc.). Each has a clear file scope and verifiable success criteria.
 
+**Core model: monthly batch settlement.** Scrobbles accumulate, then the agent runs end-of-period to calculate fair splits and send all payments in one batch on Arc.
+
 ### P0 — Shipable Demo (before submission)
 
 | ID | Task | Files | Success Criteria | Depends On |
 |----|------|-------|-----------------|------------|
-| `SCR-001` | **Agent wallet key injection** — let the agent hold a private key and send transactions autonomously via Arc RPC | `agents/scrobble-agent.ts`, `scripts/send-nanopayment.ts` | Running `npm run agent -- --execute` sends a real Arc transaction without manual input | — |
+| `SCR-001` | **Self-custodial wallet + batch send** — agent generates its own wallet, manages nonces, sends sequential EIP-1559 transactions on Arc | `agents/scrobble_agent.py` | `python agents/scrobble_agent.py -u elias_fisch -b 5.0 -x` sends real Arc txs ✅ | — |
 | `SCR-002` | **LLM-powered payment decisions** — the agent uses an LLM (Claude/Codex) to read its scrobble report and decide autonomously how much to send to each artist | `agents/scrobble-agent.ts` | Agent outputs a reasoning trace: "cupcakKe: 8 plays → $1.14" then executes it on-chain | `SCR-001` |
 | `SCR-003` | **Deploy demo** — make the server publicly accessible (ngrok, Railway, or Vercel) | `src/server.ts`, `public/index.html` | `curl https://<deployed-url>/api/health` returns 200 | — |
 
@@ -80,17 +82,17 @@ Tasks designed for coding agents (Claude Code, Codex, etc.). Each has a clear fi
 
 | ID | Task | Files | Success Criteria | Depends On |
 |----|------|-------|-----------------|------------|
-| `SCR-004` | **x402 paywalled scrobble endpoint** — wrap `/api/scrobbles` with Circle's x402 middleware so other agents must pay to query your listening data | `src/server.ts`, `package.json` | `curl /api/scrobbles` returns 402; `curl` with valid x402 header returns data | — |
-| `SCR-005` | **On-chain splitter contract** — deploy a simple Solidity contract on Arc Testnet that accepts USDC and splits to multiple recipients | `contracts/Splitter.sol` | Verified contract on arcscan, test transaction splits 1 USDC to 3 addresses | `SCR-001` |
-| `SCR-006` | **Scheduled agent runs** — cron job that runs the agent weekly, sends payments, and posts a summary to Discord | `agents/cron-agent.ts`, `docs/deploy-cron.md` | Agent auto-runs every Monday 09:00, Discord post visible | `SCR-001` |
+| `SCR-003` | **x402 paywalled scrobble endpoint** — wrap `/api/scrobbles` with Circle's x402 middleware so other agents must pay to query your listening data | `src/server.ts`, `package.json` | `curl /api/scrobbles` returns 402; `curl` with valid x402 header returns data | — |
+| `SCR-004` | **On-chain splitter contract** — deploy a simple Solidity contract on Arc Testnet that accepts USDC and splits to multiple recipients | `contracts/Splitter.sol` | Verified contract on arcscan, test transaction splits 1 USDC to 3 addresses | `SCR-001` |
+| `SCR-005` | **Scheduled agent runs** — cron job that runs the agent weekly, sends payments, and posts a summary to Discord | `agents/cron-agent.ts`, `docs/deploy-cron.md` | Agent auto-runs every Monday 09:00, Discord post visible | `SCR-001` |
 
 ### P2 — Nice-to-Have
 
 | ID | Task | Files | Success Criteria |
 |----|------|-------|-----------------|
-| `SCR-007` | **Real-time scrobble webhook** — Last.fm API polling or webhook receiver that triggers instant nanopayments per play | `agents/realtime-agent.ts` | Each new scrobble fires a $0.0001 payment within 5 seconds |
-| `SCR-008` | **Dashboard** — a simple UI showing payment history, per-artist totals, and on-chain explorer links | `public/dashboard.html` | Page loads, shows last 7 days of payments with arcscan links |
-| `SCR-009` | **Agent-to-agent payments** — another agent instance pays ScrobblePay's x402 endpoint for data, demonstrating autonomous inter-agent commerce | `agents/consumer-agent.ts` | Two agents discover each other, one pays the other for scrobble data |
+| `SCR-006` | **Real-time scrobble webhook** — Last.fm API polling or webhook receiver that triggers instant nanopayments per play | `agents/realtime-agent.ts` | Each new scrobble fires a $0.0001 payment within 5 seconds |
+| `SCR-007` | **Dashboard** — a simple UI showing payment history, per-artist totals, and on-chain explorer links | `public/dashboard.html` | Page loads, shows last 7 days of payments with arcscan links |
+| `SCR-008` | **Agent-to-agent payments** — another agent instance pays ScrobblePay's x402 endpoint for data, demonstrating autonomous inter-agent commerce | `agents/consumer-agent.ts` | Two agents discover each other, one pays the other for scrobble data |
 
 ### Legend
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """ScrobblePay Agent — AI agent for user-centric nanopayments on Arc.
 
+Model: Monthly batch settlement. Scrobbles accumulate all month, then this agent
+runs once to split a fixed budget proportionally by actual plays and send all
+payments on Arc in one batch. Not per-play real-time payments.
+
 Usage:
     python agents/scrobble_agent.py --user elias_fisch --budget 5.0
     python agents/scrobble_agent.py --user elias_fisch --budget 5.0 --execute
