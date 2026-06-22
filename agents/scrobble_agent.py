@@ -9,20 +9,18 @@ Usage:
 import asyncio
 import json
 import os
-import sys
-from dataclasses import dataclass, field
 from typing import Optional
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 
 import typer
+from pydantic import BaseModel
 
 app = typer.Typer()
 LASTFM_API = "https://ws.audioscrobbler.com/2.0/"
 
 
-@dataclass
-class Scrobble:
+class Scrobble(BaseModel):
     artist: str
     track: str
     album: str
@@ -30,8 +28,7 @@ class Scrobble:
     url: str = ""
 
 
-@dataclass
-class ArtistSplit:
+class ArtistSplit(BaseModel):
     name: str
     play_count: int
     share_pct: float
@@ -74,7 +71,7 @@ class LastFmClient:
         return tracks, int(attr.get("total", 0))
 
     @staticmethod
-    def aggregate(tracks: list[Scrobble]):
+    def aggregate(tracks: list[Scrobble]) -> list[dict]:
         counts: dict[str, dict] = {}
         for t in tracks:
             key = t.artist.lower()
@@ -104,17 +101,17 @@ def format_splits(splits: list[ArtistSplit], plays: int, scrobbles: int, budget:
     lines = [f"📊 Payment Split (${budget:.2f} total)", "━" * 55]
     for s in splits:
         bar = "█" * max(1, int(s.share_pct / 2))
-        lines.append(f"  {s.name:<28} {s.play_count:>3} plays {s.share_pct:>5.1f}% → ${s.amount_dollars:>6.3f} {bar}")
+        lines.append(
+            f"  {s.name:<28} {s.play_count:>3} plays "
+            f"{s.share_pct:>5.1f}% → ${s.amount_dollars:>6.3f} {bar}"
+        )
     lines += ["━" * 55, f"  Total artists: {len(splits)} | Sample: {plays} | Total: {scrobbles}"]
     return "\n".join(lines)
 
 
 async def send_payment(to_address: str, amount_usdc: float, private_key: Optional[str]) -> Optional[str]:
-    """Send one nanopayment. Uses web3.py — runs asynchronously via executor."""
     if not private_key:
         return None
-
-    loop = asyncio.get_running_loop()
 
     def _send():
         try:
@@ -137,11 +134,10 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
         except Exception as e:
             return f"error: {e}"
 
-    return await loop.run_in_executor(None, _send)
+    return await asyncio.get_running_loop().run_in_executor(None, _send)
 
 
 def load_api_key() -> str:
-    """Load Last.fm API key from env var or .env file."""
     key = os.environ.get("LASTFM_API_KEY")
     if key:
         return key
@@ -167,7 +163,6 @@ def run(
     ),
     max_payments: int = typer.Option(5, "--max", help="Max artists to pay (0 = all)"),
 ):
-    """🤖 ScrobblePay Agent: fetch scrobbles, calculate splits, send nanopayments."""
     api_key = load_api_key()
     pk = private_key or os.environ.get("PRIVATE_KEY")
 
@@ -181,7 +176,6 @@ def run(
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
-    # Step 1: Fetch
     typer.echo("📡 Fetching scrobbles...")
     client = LastFmClient(api_key)
     tracks, total = client.get_recent_tracks(user)
@@ -191,30 +185,26 @@ def run(
         typer.echo("   ⚠️  No scrobbles. Connect Spotify at https://www.last.fm/settings/applications")
         raise typer.Exit()
 
-    # Step 2: Aggregate + split
     artists = client.aggregate(tracks)
     splits = calculate_splits(artists, budget)
     typer.echo(f"\n📊 {len(artists)} unique artists\n")
     typer.echo(format_splits(splits, len(tracks), total, budget))
 
-    # Step 3: Execute (async)
     if execute and splits and pk:
         limit = max_payments if max_payments > 0 else len(splits)
         targets = splits[:limit]
-
-        typer.echo(f"\n💸 Sending {len(targets)} nanopayments on Arc...")
+        typer.echo(f"\n💸 Sending {len(targets)} nanopayments concurrently on Arc...")
 
         async def pay_all():
             results = await asyncio.gather(*[
-                send_payment(to_address, s.amount_dollars, pk)
-                for s in targets
+                send_payment(to_address, s.amount_dollars, pk) for s in targets
             ], return_exceptions=True)
 
             for s, result in zip(targets, results):
                 if isinstance(result, str) and result.startswith("0x"):
                     typer.echo(f"   ✅ {s.name:<22} ${s.amount_dollars:.4f} → {result[:10]}...")
                 elif result is None:
-                    typer.echo(f"   ⚠️  {s.name:<22} ${s.amount_dollars:.4f} → skipped (no key)")
+                    typer.echo(f"   ⚠️  {s.name:<22} ${s.amount_dollars:.4f} → skipped")
                 else:
                     typer.echo(f"   ❌ {s.name:<22} ${s.amount_dollars:.4f} → {result}")
 
