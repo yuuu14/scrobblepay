@@ -87,18 +87,26 @@ User's music listening (Spotify, all month)
 | **Error handling** | typed exceptions, catch at main() |
 | **Dependencies** | `pip install web3` via uv |
 
-## Roadmap Priorities
+## Status
 
-| ID | Priority | Summary | Key File | 
-|----|----------|---------|----------|
-| SCR-001 | 🔴 P0 | **Done** — Self-custodial wallet + batch send on Arc | `agents/scrobble_agent.py` |
-| SCR-002 | 🔴 P0 | Deploy server to public URL | `src/server.ts` |
-| SCR-003 | 🟡 P1 | x402 paywalled scrobble endpoint | `src/server.ts` |
-| SCR-004 | 🟡 P1 | On-chain splitter contract | `contracts/Splitter.sol` |
-| SCR-005 | 🟡 P1 | Scheduled monthly agent runs | cron + agent script |
-| SCR-006 | 🟢 P2 | Real-time scrobble per-play payment (experimental) | `agents/realtime_agent.py` |
-| SCR-007 | 🟢 P2 | Payment history dashboard | `public/dashboard.html` |
-| SCR-008 | 🟢 P2 | Agent-to-agent autonomous payments (post-hackathon) | `agents/consumer_agent.py` |
+| ID | Status | Summary |
+|----|--------|---------|
+| SCR-001 | ✅ Done | Self-custodial wallet + batch send on Arc |
+| SCR-002 | ✅ Done | Deploy via ngrok (public URL) |
+
+## Next Up
+
+| Priority | Task | Key File |
+|----------|------|----------|
+| 🔴 P1 | Scheduled monthly agent run (cron) | cron + `agents/scrobble_agent.py` |
+| 🔴 P1 | On-chain splitter contract | `contracts/Splitter.sol` |
+| 🟡 P2 | Dashboard UI | `public/dashboard.html` |
+
+## Avoid
+
+- ~~LLM payment decisions~~ — formula is fair, no real problem
+- ~~x402 paywalled endpoint~~ — no one pays for listening data
+- ~~Agent-to-agent payments~~ — depends on discarded x402
 
 **Core model:** Monthly batch settlement — scrobbles accumulate, then the agent runs end-of-period to calculate fair splits and send all payments in one batch on Arc. Not per-play real-time payments.
 

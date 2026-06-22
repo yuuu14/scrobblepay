@@ -46,3 +46,13 @@
 - [ ] 检查 GitHub repo 是否有敏感信息泄漏（PRIVATE_KEY）
 - [ ] 提交到 Luma (https://luma.com/5xcrazms)
 - [ ] Discord 分享项目链接
+
+## x402 Protocol (Circle)
+
+x402 (HTTP 402 Payment Required) is Circle's protocol for pay-per-request APIs.
+
+**When it makes sense:** LLM crawlers paying RSS feeds, image generation APIs, sensor data marketplaces — services where one agent genuinely needs another agent's data.
+
+**Why ScrobblePay doesn't need it:** Personal listening data has no resale value. Adding x402 to ScrobblePay would be feature-for-feature's sake.
+
+**Reference implementation:** `circle-agent/` directory (cloned example, not part of this project).

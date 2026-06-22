@@ -66,36 +66,36 @@ npm run agent -- --user YOUR_LASTFM_USER --budget 5.0 --execute
 
 ## Roadmap
 
-Tasks designed for coding agents (Claude Code, Codex, etc.). Each has a clear file scope and verifiable success criteria.
+**Model:** Monthly batch settlement. Scrobbles accumulate, then agent runs at end of period to split a fixed budget proportionally by plays and send all payments on Arc.
 
-**Core model: monthly batch settlement.** Scrobbles accumulate, then the agent runs end-of-period to calculate fair splits and send all payments in one batch on Arc.
+Status icons: ✅ completed  🔜 next  💡 idea
 
-### P0 — Shipable Demo (before submission)
+### ✅ Completed
 
-| ID | Task | Files | Success Criteria | Depends On |
-|----|------|-------|-----------------|------------|
-| `SCR-001` | **Self-custodial wallet + batch send** — agent generates its own wallet, manages nonces, sends sequential EIP-1559 transactions on Arc | `agents/scrobble_agent.py` | `python agents/scrobble_agent.py -u elias_fisch -b 5.0 -x` sends real Arc txs ✅ | — |
-| `SCR-002` | **LLM-powered payment decisions** — the agent uses an LLM (Claude/Codex) to read its scrobble report and decide autonomously how much to send to each artist | `agents/scrobble-agent.ts` | Agent outputs a reasoning trace: "cupcakKe: 8 plays → $1.14" then executes it on-chain | `SCR-001` |
-| `SCR-003` | **Deploy demo** — make the server publicly accessible (ngrok, Railway, or Vercel) | `src/server.ts`, `public/index.html` | `curl https://<deployed-url>/api/health` returns 200 | — |
+| ID | Task | Status |
+|----|------|--------|
+| `SCR-001` | Self-custodial wallet + batch send — agent generates wallet, manages nonces, sends sequential EIP-1559 txs on Arc | ✅ Live on Arc testnet |
+| `SCR-002` | Deploy to public URL — ngrok tunnel with health polling | ✅ `https://craftily-obedient-campfire.ngrok-free.dev` |
 
-### P1 — Polish & Differentiation
+### 🔜 Next
 
-| ID | Task | Files | Success Criteria | Depends On |
-|----|------|-------|-----------------|------------|
-| `SCR-003` | **x402 paywalled scrobble endpoint** — wrap `/api/scrobbles` with Circle's x402 middleware so other agents must pay to query your listening data | `src/server.ts`, `package.json` | `curl /api/scrobbles` returns 402; `curl` with valid x402 header returns data | — |
-| `SCR-004` | **On-chain splitter contract** — deploy a simple Solidity contract on Arc Testnet that accepts USDC and splits to multiple recipients | `contracts/Splitter.sol` | Verified contract on arcscan, test transaction splits 1 USDC to 3 addresses | `SCR-001` |
-| `SCR-005` | **Scheduled agent runs** — cron job that runs the agent weekly, sends payments, and posts a summary to Discord | `agents/cron-agent.ts`, `docs/deploy-cron.md` | Agent auto-runs every Monday 09:00, Discord post visible | `SCR-001` |
+| ID | Task | Why |
+|----|------|-----|
+| `SCR-003` | **Scheduled monthly agent run** — cron job runs agent on the 1st of each month, sends payments, posts summary to Discord | Only missing piece for "set and forget" |
+| `SCR-004` | **On-chain splitter contract** — deploy a simple Solidity contract on Arc that accepts USDC and splits to multiple recipients in one tx | Reduces gas from N × 25891 to 1 tx |
+| `SCR-005` | **Dashboard** — simple UI showing current month's split, payment history, arcscan links | Better than CLI for demo |
 
-### P2 — Nice-to-Have
+### 💡 Post-Hackathon Ideas
 
-| ID | Task | Files | Success Criteria |
-|----|------|-------|-----------------|
-| `SCR-006` | **Real-time scrobble webhook** — Last.fm API polling or webhook receiver that triggers instant nanopayments per play | `agents/realtime-agent.ts` | Each new scrobble fires a $0.0001 payment within 5 seconds |
-| `SCR-007` | **Dashboard** — a simple UI showing payment history, per-artist totals, and on-chain explorer links | `public/dashboard.html` | Page loads, shows last 7 days of payments with arcscan links |
-| `SCR-008` | **Agent-to-agent payments** — another agent instance pays ScrobblePay's x402 endpoint for data, demonstrating autonomous inter-agent commerce | `agents/consumer-agent.ts` | Two agents discover each other, one pays the other for scrobble data |
+| ID | Idea | Notes |
+|----|------|-------|
+| `SCR-006` | Agent-to-agent data querying with x402 | If someone builds a service worth paying per-request for, x402 is the right protocol. ScrobblePay itself doesn't need it. |
+| `SCR-007` | Real-time scrobble webhook | Per-play nanopayments raise the budget-overrun problem — only makes sense with a replenishable wallet |
 
-### Legend
+### Discarded
 
-- `P0` = needed for competitive submission
-- `P1` = strong differentiation
-- `P2` = showcase depth
+| ID | Reason |
+|----|--------|
+| ~~LLM payment decisions~~ | No real problem to solve — formula (plays/total × budget) is fair, transparent, auditable. "AI for AI's sake". |
+| ~~x402 paywalled scrobble endpoint~~ | No one will pay to see someone else's listening data. x402 is a tool for paid APIs, not a feature for ScrobblePay. |
+| ~~Agent-to-agent payments~~ | Relies on the discarded x402 endpoint. If x402 doesn't solve a real problem for this project, neither does agent-to-agent. |
