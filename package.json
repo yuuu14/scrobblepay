@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "agent": "tsx agents/scrobble-agent.ts",
+    "agent": "python3 agents/scrobble_agent.py",
     "buyer": "tsx src/buyer.ts",
     "demo": "tsx src/demo.ts",
-    "decode": "tsx src/decode-batch.ts"
+    "decode": "tsx src/decode-batch.ts",
+    "agent-py": "python3 agents/scrobble_agent.py",
+    "send-py": "python3 scripts/send_nanopayment.py"
   },
   "dependencies": {
     "@circle-fin/cli": "^0.0.5",

@@ -1,0 +1,15 @@
+[project]
+name = "scrobblepay"
+version = "1.0.0"
+description = "AI agent for user-centric nanopayments on Arc"
+requires-python = ">=3.12"
+dependencies = [
+    "web3>=7.0",
+]
+
+[project.scripts]
+scrobble-agent = "agents.scrobble_agent:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
