@@ -261,8 +261,16 @@ def run(
         typer.echo("━" * 30)
         typer.echo(f"  Address:  {address}")
         typer.echo(f"  Explorer: https://testnet.arcscan.app/address/{address}")
+        try:
+            from web3 import Web3
+            w3 = _web3()
+            bal = float(w3.from_wei(w3.eth.get_balance(Web3.to_checksum_address(address)), "ether"))
+            typer.echo(f"  Balance:  {bal:.4f} USDC")
+        except Exception:
+            typer.echo(f"  Balance:  (unable to query)")
+        typer.echo(f"  Faucet:   https://faucet.circle.com/")
         typer.echo("━" * 30)
-        raise typer.Exit() or _read_env_value("PRIVATE_KEY")
+        raise typer.Exit()
 
     typer.echo(f"""
 🤖 ScrobblePay Agent
