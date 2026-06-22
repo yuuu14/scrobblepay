@@ -35,5 +35,7 @@ ngrok.yml
 # Claude Code internal state (not TASK.md which is intentional)
 .claude/*.json
 .claude/*.log
+
+# Python
 .venv/
 __pycache__/
