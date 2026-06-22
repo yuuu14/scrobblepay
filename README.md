@@ -63,3 +63,37 @@ npm run agent -- --user YOUR_LASTFM_USER --budget 5.0 --execute
 - [Circle Nanopayments](https://www.circle.com/nanopayments)
 - [Arc Network](https://arc.network)
 - [Distribution Bootstrap Post](https://thecanteenapp.com/analysis/2026/05/28/distribution-bootstrap-payments-founders.html)
+
+## Roadmap
+
+Tasks designed for coding agents (Claude Code, Codex, etc.). Each has a clear file scope and verifiable success criteria.
+
+### P0 — Shipable Demo (before submission)
+
+| ID | Task | Files | Success Criteria | Depends On |
+|----|------|-------|-----------------|------------|
+| `SCR-001` | **Agent wallet key injection** — let the agent hold a private key and send transactions autonomously via Arc RPC | `agents/scrobble-agent.ts`, `scripts/send-nanopayment.ts` | Running `npm run agent -- --execute` sends a real Arc transaction without manual input | — |
+| `SCR-002` | **LLM-powered payment decisions** — the agent uses an LLM (Claude/Codex) to read its scrobble report and decide autonomously how much to send to each artist | `agents/scrobble-agent.ts` | Agent outputs a reasoning trace: "cupcakKe: 8 plays → $1.14" then executes it on-chain | `SCR-001` |
+| `SCR-003` | **Deploy demo** — make the server publicly accessible (ngrok, Railway, or Vercel) | `src/server.ts`, `public/index.html` | `curl https://<deployed-url>/api/health` returns 200 | — |
+
+### P1 — Polish & Differentiation
+
+| ID | Task | Files | Success Criteria | Depends On |
+|----|------|-------|-----------------|------------|
+| `SCR-004` | **x402 paywalled scrobble endpoint** — wrap `/api/scrobbles` with Circle's x402 middleware so other agents must pay to query your listening data | `src/server.ts`, `package.json` | `curl /api/scrobbles` returns 402; `curl` with valid x402 header returns data | — |
+| `SCR-005` | **On-chain splitter contract** — deploy a simple Solidity contract on Arc Testnet that accepts USDC and splits to multiple recipients | `contracts/Splitter.sol` | Verified contract on arcscan, test transaction splits 1 USDC to 3 addresses | `SCR-001` |
+| `SCR-006` | **Scheduled agent runs** — cron job that runs the agent weekly, sends payments, and posts a summary to Discord | `agents/cron-agent.ts`, `docs/deploy-cron.md` | Agent auto-runs every Monday 09:00, Discord post visible | `SCR-001` |
+
+### P2 — Nice-to-Have
+
+| ID | Task | Files | Success Criteria |
+|----|------|-------|-----------------|
+| `SCR-007` | **Real-time scrobble webhook** — Last.fm API polling or webhook receiver that triggers instant nanopayments per play | `agents/realtime-agent.ts` | Each new scrobble fires a $0.0001 payment within 5 seconds |
+| `SCR-008` | **Dashboard** — a simple UI showing payment history, per-artist totals, and on-chain explorer links | `public/dashboard.html` | Page loads, shows last 7 days of payments with arcscan links |
+| `SCR-009` | **Agent-to-agent payments** — another agent instance pays ScrobblePay's x402 endpoint for data, demonstrating autonomous inter-agent commerce | `agents/consumer-agent.ts` | Two agents discover each other, one pays the other for scrobble data |
+
+### Legend
+
+- `P0` = needed for competitive submission
+- `P1` = strong differentiation
+- `P2` = showcase depth
