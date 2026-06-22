@@ -50,7 +50,7 @@ app.get('/api/scrobbles', async (req, res) => {
         artist: a.artist,
         plays: a.playCount,
         share: `${a.sharePercent}%`,
-        payout: `$${a.amountCents.toFixed(2)}`,
+        payout: `$${a.amountDollars.toFixed(2)}`,
       })),
     });
   } catch (err: any) {

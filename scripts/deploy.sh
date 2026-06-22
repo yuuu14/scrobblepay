@@ -33,6 +33,13 @@ if ! command -v ngrok >/dev/null 2>&1; then
   exit 1
 fi
 
+
+# Load .env if present
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
 # 2. Start the server (inherits PORT from env)
 echo "▶  Starting server on port $PORT ..."
 ( cd "$ROOT_DIR" && PORT="$PORT" npm start ) &
