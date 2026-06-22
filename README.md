@@ -30,18 +30,19 @@ An AI agent that:
 ## Quick Start
 
 ```bash
-# Install
-npm install
-
-# Run the server
-npm start
-# → http://localhost:3000
-
 # Run the agent (dry run)
-npm run agent -- --user YOUR_LASTFM_USER --budget 5.0
+cd /Users/elias/Developer/yuuu14/scrobblepay
+source .venv/bin/activate
+python agents/scrobble_agent.py --user YOUR_LASTFM_USER --budget 5.0
 
-# Run with real payments
-npm run agent -- --user YOUR_LASTFM_USER --budget 5.0 --execute
+# Show wallet address
+python agents/scrobble_agent.py --show-wallet
+
+# Run with real payments (first run generates wallet + shows faucet link)
+python agents/scrobble_agent.py --user YOUR_LASTFM_USER --budget 5.0 --execute
+
+# Start public server
+./scripts/deploy.sh
 ```
 
 ## API Endpoints

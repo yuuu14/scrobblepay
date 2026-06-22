@@ -117,19 +117,14 @@ User's music listening (Spotify, all month)
 python agents/scrobble_agent.py --user elias_fisch --budget 5.0
 
 # Run agent with real payments
-PRIVATE_KEY=*** python agents/scrobble_agent.py --user elias_fisch --budget 5.0 --execute
+python agents/scrobble_agent.py --user elias_fisch --budget 5.0 --execute
+
+# Show agent wallet address and balance
+python agents/scrobble_agent.py --show-wallet
 
 # Send one nanopayment
-PRIVATE_KEY=*** python scripts/send_nanopayment.py 0x933a...9682 0.000001
+python scripts/send_nanopayment.py <to_address> 0.000001  # requires PRIVATE_KEY env
 
 # Start server
 npm start
-
-# Check Arc balance
-curl -s -X POST https://rpc.testnet.arc.network \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"eth_getBalance","params":["<address>","latest"],"id":1}'
-
-# Install web3.py
-uv pip install web3
 ```
