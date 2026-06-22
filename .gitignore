@@ -36,3 +36,4 @@ ngrok.yml
 .claude/*.json
 .claude/*.log
 .venv/
+__pycache__/
