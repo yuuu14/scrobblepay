@@ -10,8 +10,7 @@ import asyncio
 import json
 import os
 from typing import Optional
-from urllib.request import Request, urlopen
-from urllib.parse import urlencode
+import httpx
 
 import typer
 from pydantic import BaseModel
@@ -20,6 +19,19 @@ app = typer.Typer()
 LASTFM_API = "https://ws.audioscrobbler.com/2.0/"
 RPC_URL = "https://rpc.testnet.arc.network"
 CHAIN_ID = 5042002
+
+import ssl as _ssl
+_ssl_ctx = _ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = _ssl.CERT_NONE
+
+
+def _web3() -> "Web3":
+    from web3 import Web3
+    from web3.providers.rpc import HTTPProvider
+    import urllib3
+    urllib3.disable_warnings()
+    return Web3(HTTPProvider(RPC_URL, request_kwargs={"verify": False}))
 ENV_FILE = ".env"
 FAUCET_URL = "https://faucet.circle.com/"
 
@@ -44,16 +56,15 @@ class LastFmClient:
         self.api_key = api_key
 
     def get_recent_tracks(self, user: str, limit: int = 200):
-        params = urlencode({
+        params = {
             "method": "user.getRecentTracks",
             "user": user,
             "api_key": self.api_key,
             "format": "json",
             "limit": limit,
-        })
-        req = Request(f"{LASTFM_API}?{params}", headers={"User-Agent": "ScrobblePay/1.0"})
-        with urlopen(req) as resp:
-            data = json.loads(resp.read())
+        }
+        resp = httpx.get(LASTFM_API, params=params, timeout=15)
+        data = resp.json()
 
         if "error" in data:
             raise RuntimeError(f"Last.fm API error: {data['message']}")
@@ -120,13 +131,13 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
     def _send():
         try:
             from web3 import Web3
-            w3 = Web3(Web3.HTTPProvider(RPC_URL))
+            w3 = _web3()
             acct = w3.eth.account.from_key(private_key)
             wei = w3.to_wei(amount_usdc, "ether")
             tx = {
                 "to": w3.to_checksum_address(to_address),
                 "value": wei,
-                "gas": 21000,
+                "gas": 30000,
                 "gasPrice": w3.eth.gas_price,
                 "nonce": w3.eth.get_transaction_count(acct.address),
                 "chainId": CHAIN_ID,
@@ -134,7 +145,7 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
             signed = acct.sign_transaction(tx)
             tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-            return tx_hash.hex() if receipt["status"] == 1 else None
+            return tx_hash.hex() if receipt["status"] in (1, "0x1") else None
         except Exception as e:
             return f"error: {e}"
 
@@ -199,7 +210,7 @@ def load_or_create_wallet(explicit_key: Optional[str]) -> tuple[str, str, bool]:
 def get_balance(address: str) -> float:
     from web3 import Web3
 
-    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    w3 = _web3()
     return float(w3.from_wei(w3.eth.get_balance(Web3.to_checksum_address(address)), "ether"))
 
 
@@ -292,21 +303,39 @@ def run(
 
         limit = max_payments if max_payments > 0 else len(splits)
         targets = splits[:limit]
-        typer.echo(f"\n💸 Sending {len(targets)} nanopayments concurrently on Arc...")
+        typer.echo(f"\n💸 Sending {len(targets)} nanopayments on Arc...")
         typer.echo(f"   From: {address}")
 
         async def pay_all():
-            results = await asyncio.gather(*[
-                send_payment(to_address, s.amount_dollars, pk) for s in targets
-            ], return_exceptions=True)
+            """Send payments sequentially with proper nonce management."""
+            from web3 import Web3
+            w3 = _web3()
+            acct = w3.eth.account.from_key(pk)
+            base_nonce = w3.eth.get_transaction_count(acct.address)
 
-            for s, result in zip(targets, results):
-                if isinstance(result, str) and result.startswith("0x"):
-                    typer.echo(f"   ✅ {s.name:<22} ${s.amount_dollars:.4f} → {result[:10]}...")
-                elif result is None:
-                    typer.echo(f"   ⚠️  {s.name:<22} ${s.amount_dollars:.4f} → skipped")
-                else:
-                    typer.echo(f"   ❌ {s.name:<22} ${s.amount_dollars:.4f} → {result}")
+            for i, s in enumerate(targets):
+                wei = w3.to_wei(s.amount_dollars, "ether")
+                base_fee = w3.eth.get_block("latest")["baseFeePerGas"]
+                tx = {
+                    "to": w3.to_checksum_address(to_address),
+                    "value": wei,
+                    "gas": 30000,
+                    "maxFeePerGas": base_fee * 2,
+                    "maxPriorityFeePerGas": base_fee // 2,
+                    "nonce": base_nonce + i,
+                    "chainId": CHAIN_ID,
+                    "type": "0x2",
+                }
+                try:
+                    signed = acct.sign_transaction(tx)
+                    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+                    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+                    if receipt["status"] in (1, "0x1", b"\x01"):
+                        typer.echo(f"   ✅ {s.name:<22} ${s.amount_dollars:.4f} → {tx_hash.hex()[:10]}...")
+                    else:
+                        typer.echo(f"   ❌ {s.name:<22} ${s.amount_dollars:.4f} → failed on chain")
+                except Exception as e:
+                    typer.echo(f"   ❌ {s.name:<22} ${s.amount_dollars:.4f} → {e}")
 
         asyncio.run(pay_all())
     elif not execute:
