@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "agent": "python3 agents/scrobble_agent.py",
+    "agent": "cd /Users/elias/Developer/yuuu14/scrobblepay && python3 agents/scrobble_agent.py",
     "buyer": "tsx src/buyer.ts",
     "demo": "tsx src/demo.ts",
     "decode": "tsx src/decode-batch.ts",

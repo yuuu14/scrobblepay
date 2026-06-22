@@ -6,14 +6,18 @@ Usage:
     python agents/scrobble_agent.py --user elias_fisch --budget 5.0 --execute
 """
 
-import argparse
+import asyncio
 import json
 import os
 import sys
-from dataclasses import dataclass
-from urllib.request import urlopen, Request
+from dataclasses import dataclass, field
+from typing import Optional
+from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 
+import typer
+
+app = typer.Typer()
 LASTFM_API = "https://ws.audioscrobbler.com/2.0/"
 
 
@@ -22,8 +26,8 @@ class Scrobble:
     artist: str
     track: str
     album: str
-    timestamp: int
-    url: str
+    timestamp: int = 0
+    url: str = ""
 
 
 @dataclass
@@ -38,7 +42,7 @@ class LastFmClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
 
-    def get_recent_tracks(self, user: str, limit: int = 200) -> tuple[list[Scrobble], int]:
+    def get_recent_tracks(self, user: str, limit: int = 200):
         params = urlencode({
             "method": "user.getRecentTracks",
             "user": user,
@@ -46,8 +50,7 @@ class LastFmClient:
             "format": "json",
             "limit": limit,
         })
-        url = f"{LASTFM_API}?{params}"
-        req = Request(url, headers={"User-Agent": "ScrobblePay/1.0"})
+        req = Request(f"{LASTFM_API}?{params}", headers={"User-Agent": "ScrobblePay/1.0"})
         with urlopen(req) as resp:
             data = json.loads(resp.read())
 
@@ -57,160 +60,171 @@ class LastFmClient:
         tracks_raw = data.get("recenttracks", {}).get("track", [])
         attr = data.get("recenttracks", {}).get("@attr", {})
 
-        tracks = []
-        for t in tracks_raw:
-            if t.get("@attr", {}).get("nowplaying"):
-                continue  # skip currently playing
-            tracks.append(Scrobble(
+        tracks = [
+            Scrobble(
                 artist=t["artist"]["#text"],
                 track=t["name"],
                 album=t["album"]["#text"],
                 timestamp=int(t.get("date", {}).get("uts", 0)),
                 url=t["url"],
-            ))
-
+            )
+            for t in tracks_raw
+            if not t.get("@attr", {}).get("nowplaying")
+        ]
         return tracks, int(attr.get("total", 0))
 
     @staticmethod
-    def aggregate_by_artist(tracks: list[Scrobble]) -> list[dict]:
+    def aggregate(tracks: list[Scrobble]):
         counts: dict[str, dict] = {}
         for t in tracks:
             key = t.artist.lower()
             if key in counts:
                 counts[key]["count"] += 1
             else:
-                counts[key] = {"name": t.artist, "count": 1, "url": t.url}
-        result = sorted(counts.values(), key=lambda x: -x["count"])
-        return result
+                counts[key] = {"name": t.artist, "count": 1}
+        return sorted(counts.values(), key=lambda x: -x["count"])
 
 
-class PaymentSplitter:
-    @staticmethod
-    def calculate(artists: list[dict], total_usd: float) -> list[ArtistSplit]:
-        total_plays = sum(a["count"] for a in artists)
-        if total_plays == 0:
-            return []
-
-        splits = []
-        for a in artists:
-            share = (a["count"] / total_plays) * 100
-            amount = round((a["count"] / total_plays) * total_usd, 4)
-            splits.append(ArtistSplit(
-                name=a["name"],
-                play_count=a["count"],
-                share_pct=round(share, 2),
-                amount_dollars=amount,
-            ))
-        return splits
-
-    @staticmethod
-    def format_splits(splits: list[ArtistSplit], total_plays: int, total_scrobbles: int, budget: float) -> str:
-        lines = [f"📊 Payment Split (${budget:.2f} total)", "━" * 55]
-        for s in splits:
-            bar = "█" * max(1, int(s.share_pct / 2))
-            lines.append(
-                f"  {s.name:<28} {s.play_count:>3} plays "
-                f"{s.share_pct:>5.1f}% → ${s.amount_dollars:>6.3f} {bar}"
-            )
-        lines.append("━" * 55)
-        lines.append(f"  Total artists: {len(splits)} | Plays in sample: {total_plays} | Total scrobbles: {total_scrobbles}")
-        return "\n".join(lines)
+def calculate_splits(artists: list[dict], total_usd: float) -> list[ArtistSplit]:
+    total = sum(a["count"] for a in artists)
+    if total == 0:
+        return []
+    return [
+        ArtistSplit(
+            name=a["name"],
+            play_count=a["count"],
+            share_pct=round(a["count"] / total * 100, 2),
+            amount_dollars=round(a["count"] / total * total_usd, 4),
+        )
+        for a in artists
+    ]
 
 
-def send_nanopayment(to_address: str, amount_usdc: float, private_key: str | None = None):
-    """Send a nanopayment on Arc Testnet via RPC.
+def format_splits(splits: list[ArtistSplit], plays: int, scrobbles: int, budget: float) -> str:
+    lines = [f"📊 Payment Split (${budget:.2f} total)", "━" * 55]
+    for s in splits:
+        bar = "█" * max(1, int(s.share_pct / 2))
+        lines.append(f"  {s.name:<28} {s.play_count:>3} plays {s.share_pct:>5.1f}% → ${s.amount_dollars:>6.3f} {bar}")
+    lines += ["━" * 55, f"  Total artists: {len(splits)} | Sample: {plays} | Total: {scrobbles}"]
+    return "\n".join(lines)
 
-    Requires PRIVATE_KEY env var or --private-key argument.
-    Uses web3.py for the actual transaction.
-    """
-    if private_key is None:
-        private_key = os.environ.get("PRIVATE_KEY")
+
+async def send_payment(to_address: str, amount_usdc: float, private_key: Optional[str]) -> Optional[str]:
+    """Send one nanopayment. Uses web3.py — runs asynchronously via executor."""
     if not private_key:
-        print("   ⚠️  No PRIVATE_KEY set. Skipping real transaction.")
-        print("   💡 Set PRIVATE_KEY env var to send real payments.")
-        return False
+        return None
 
+    loop = asyncio.get_running_loop()
+
+    def _send():
+        try:
+            from web3 import Web3
+            w3 = Web3(Web3.HTTPProvider("https://rpc.testnet.arc.network"))
+            acct = w3.eth.account.from_key(private_key)
+            wei = w3.to_wei(amount_usdc, "ether")
+            tx = {
+                "to": w3.to_checksum_address(to_address),
+                "value": wei,
+                "gas": 21000,
+                "gasPrice": w3.eth.gas_price,
+                "nonce": w3.eth.get_transaction_count(acct.address),
+                "chainId": 5042002,
+            }
+            signed = acct.sign_transaction(tx)
+            tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            return tx_hash.hex() if receipt["status"] == 1 else None
+        except Exception as e:
+            return f"error: {e}"
+
+    return await loop.run_in_executor(None, _send)
+
+
+def load_api_key() -> str:
+    """Load Last.fm API key from env var or .env file."""
+    key = os.environ.get("LASTFM_API_KEY")
+    if key:
+        return key
     try:
-        from web3 import Web3
-        w3 = Web3(Web3.HTTPProvider("https://rpc.testnet.arc.network"))
-        account = w3.eth.account.from_key(private_key)
-        wei_amount = w3.to_wei(amount_usdc, "ether")  # Arc uses 18 decimals
-
-        tx = {
-            "to": w3.to_checksum_address(to_address),
-            "value": wei_amount,
-            "gas": 21000,
-            "gasPrice": w3.eth.gas_price,
-            "nonce": w3.eth.get_transaction_count(account.address),
-            "chainId": 5042002,
-        }
-        signed = account.sign_transaction(tx)
-        tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        print(f"   ✅ Sent ${amount_usdc:.6f} → {to_address[:10]}...")
-        print(f"      Tx: https://testnet.arcscan.app/tx/{tx_hash.hex()}")
-        return True
-    except ImportError:
-        print("   ⚠️  web3.py not installed. Install with: uv pip install web3")
-        return False
-    except Exception as e:
-        print(f"   ❌ Transaction failed: {e}")
-        return False
+        for line in open(".env"):
+            if line.startswith("LASTFM_API_KEY="):
+                return line.strip().split("=", 1)[1]
+    except FileNotFoundError:
+        pass
+    typer.echo("❌ LASTFM_API_KEY not set. Set env var or create .env file.", err=True)
+    raise typer.Exit(1)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="ScrobblePay Agent")
-    parser.add_argument("--user", default="elias_fisch", help="Last.fm username")
-    parser.add_argument("--budget", type=float, default=5.0, help="Monthly budget in USD")
-    parser.add_argument("--execute", action="store_true", help="Actually send payments")
-    parser.add_argument("--private-key", help="Private key for Arc Testnet (or set PRIVATE_KEY env)")
-    args = parser.parse_args()
+@app.command()
+def run(
+    user: str = typer.Option("elias_fisch", "--user", "-u", help="Last.fm username"),
+    budget: float = typer.Option(5.0, "--budget", "-b", help="Monthly budget in USD"),
+    execute: bool = typer.Option(False, "--execute", "-x", help="Actually send payments on Arc"),
+    private_key: Optional[str] = typer.Option(None, "--private-key", "-k", help="Arc wallet private key"),
+    to_address: str = typer.Option(
+        "0x933a2405f84c224be1ef373ba16e992e1f459682",
+        "--to", help="Recipient address for payments",
+    ),
+    max_payments: int = typer.Option(5, "--max", help="Max artists to pay (0 = all)"),
+):
+    """🤖 ScrobblePay Agent: fetch scrobbles, calculate splits, send nanopayments."""
+    api_key = load_api_key()
+    pk = private_key or os.environ.get("PRIVATE_KEY")
 
-    
-    api_key = os.environ.get("LASTFM_API_KEY", "") or open(".env").read().split("LASTFM_API_KEY=")[1].split("\n")[0].strip()
-    if not api_key:
-        print("❌ LASTFM_API_KEY not set. Create .env file or set env var.")
-        sys.exit(1)
-
-    print(f"""
+    typer.echo(f"""
 🤖 ScrobblePay Agent
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  User:    {args.user}
-  Budget:  ${args.budget:.2f}
-  Execute: {'✅ ON' if args.execute else '❌ OFF (dry run)'}
+  User:    {user}
+  Budget:  ${budget:.2f}
+  Execute: {'✅ ON' if execute else '❌ OFF (dry run)'}
+  Wallet:  {'✅ configured' if pk else '❌ no key'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
-    # Step 1: Fetch scrobbles
-    print("📡 Fetching scrobbles from Last.fm...")
+    # Step 1: Fetch
+    typer.echo("📡 Fetching scrobbles...")
     client = LastFmClient(api_key)
-    tracks, total = client.get_recent_tracks(args.user)
-    print(f"   Found {len(tracks)} tracks ({total} total scrobbles)")
+    tracks, total = client.get_recent_tracks(user)
+    typer.echo(f"   {len(tracks)} tracks ({total} total)")
 
     if not tracks:
-        print("   ⚠️  No scrobbles found. Connect Spotify at https://www.last.fm/settings/applications")
-        return
+        typer.echo("   ⚠️  No scrobbles. Connect Spotify at https://www.last.fm/settings/applications")
+        raise typer.Exit()
 
-    # Step 2: Aggregate
-    artists = client.aggregate_by_artist(tracks)
-    print(f"\n📊 {len(artists)} unique artists")
+    # Step 2: Aggregate + split
+    artists = client.aggregate(tracks)
+    splits = calculate_splits(artists, budget)
+    typer.echo(f"\n📊 {len(artists)} unique artists\n")
+    typer.echo(format_splits(splits, len(tracks), total, budget))
 
-    # Step 3: Calculate splits
-    splitter = PaymentSplitter()
-    splits = splitter.calculate(artists, args.budget)
-    print("\n" + splitter.format_splits(splits, len(tracks), total, args.budget))
+    # Step 3: Execute (async)
+    if execute and splits and pk:
+        limit = max_payments if max_payments > 0 else len(splits)
+        targets = splits[:limit]
 
-    # Step 4: Execute
-    if args.execute and splits:
-        print("\n💸 Sending nanopayments on Arc Testnet...")
-        for s in splits[:5]:  # top 5 for demo
-            print(f"\n   → {s.name}: ${s.amount_dollars:.4f}")
-            send_nanopayment("0x933a2405f84c224be1ef373ba16e992e1f459682", s.amount_dollars, args.private_key)
+        typer.echo(f"\n💸 Sending {len(targets)} nanopayments on Arc...")
 
-    if not args.execute:
-        print("\n💡 Run with --execute to send real payments on Arc")
-        print("   Set PRIVATE_KEY env var first.")
+        async def pay_all():
+            results = await asyncio.gather(*[
+                send_payment(to_address, s.amount_dollars, pk)
+                for s in targets
+            ], return_exceptions=True)
+
+            for s, result in zip(targets, results):
+                if isinstance(result, str) and result.startswith("0x"):
+                    typer.echo(f"   ✅ {s.name:<22} ${s.amount_dollars:.4f} → {result[:10]}...")
+                elif result is None:
+                    typer.echo(f"   ⚠️  {s.name:<22} ${s.amount_dollars:.4f} → skipped (no key)")
+                else:
+                    typer.echo(f"   ❌ {s.name:<22} ${s.amount_dollars:.4f} → {result}")
+
+        asyncio.run(pay_all())
+    elif not execute:
+        typer.echo("\n💡 Pass --execute (-x) to send real payments on Arc")
+        typer.echo("   Set PRIVATE_KEY env var for the source wallet.")
+
+    typer.echo("\n✅ Done!")
 
 
 if __name__ == "__main__":
-    main()
+    app()
