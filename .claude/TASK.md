@@ -73,6 +73,7 @@ User's music listening (Spotify)
 | **Server language** | TypeScript ESM (stable, don't refactor) |
 | **Arc amounts** | `w3.to_wei(dollars, "ether")` — Arc uses 18 decimals |
 | **Env vars** | `LASTFM_API_KEY`, `PRIVATE_KEY` |
+| **Data models** | Pydantic v2 (`BaseModel`) |
 | **Error handling** | typed exceptions, catch at main() |
 | **Dependencies** | `pip install web3` via uv |
 
