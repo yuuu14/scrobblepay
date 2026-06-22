@@ -28,6 +28,10 @@ circle-agent/
 # TypeScript
 *.tsbuildinfo
 
+# ngrok
+ngrok.yml
+.ngrok2/
+
 # Claude Code internal state (not TASK.md which is intentional)
 .claude/*.json
 .claude/*.log
