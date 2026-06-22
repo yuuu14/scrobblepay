@@ -14,9 +14,17 @@ Each transaction costs ~25891 gas. For 25 artists, that's ~647275 gas just for d
 A splitter contract fixes this:
 
 ```solidity
-function split(address[] recipients, uint256[] amounts) external {
+function split(address[] calldata recipients, uint256[] calldata amounts)
+    external payable
+{
+    uint256 total;
     for (uint i = 0; i < recipients.length; i++) {
-        USDC.transfer(recipients[i], amounts[i]);
+        total += amounts[i];
+    }
+    require(msg.value == total, "value != total");
+    for (uint i = 0; i < recipients.length; i++) {
+        (bool ok,) = recipients[i].call{value: amounts[i]}("");
+        require(ok, "transfer failed");
     }
 }
 ```
