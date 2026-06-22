@@ -55,8 +55,9 @@ User's music listening (Spotify)
 - Faucet: `https://faucet.circle.com/`
 
 ### Wallet Setup
-- **For agent**: raw EVM private key (env var `PRIVATE_KEY`)
-- **Create wallet**: `uv run --with web3 python -c "from eth_account import Account; acct=Account.create(); print(acct.address); print(acct.key.hex())"`
+- **Self-custodial**: on the first `--execute` run the agent auto-generates a wallet, saves the key to `.env` as `PRIVATE_KEY=`, prints the address + faucet link, and exits for funding. Subsequent runs reuse it.
+- **Override (optional)**: set `PRIVATE_KEY` (env var or `--private-key`) to use an existing wallet instead — it is not overwritten.
+- **Manual create**: `uv run --with web3 python -c "from eth_account import Account; acct=Account.create(); print(acct.address); print(acct.key.hex())"`
 - **Fund wallet**: https://faucet.circle.com/ → paste address → Arc Testnet
 - **Check balance**: `python scripts/send_nanopayment.py <address> 0` (fails but shows balance)
 

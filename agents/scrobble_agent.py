@@ -18,6 +18,10 @@ from pydantic import BaseModel
 
 app = typer.Typer()
 LASTFM_API = "https://ws.audioscrobbler.com/2.0/"
+RPC_URL = "https://rpc.testnet.arc.network"
+CHAIN_ID = 5042002
+ENV_FILE = ".env"
+FAUCET_URL = "https://faucet.circle.com/"
 
 
 class Scrobble(BaseModel):
@@ -116,7 +120,7 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
     def _send():
         try:
             from web3 import Web3
-            w3 = Web3(Web3.HTTPProvider("https://rpc.testnet.arc.network"))
+            w3 = Web3(Web3.HTTPProvider(RPC_URL))
             acct = w3.eth.account.from_key(private_key)
             wei = w3.to_wei(amount_usdc, "ether")
             tx = {
@@ -125,7 +129,7 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
                 "gas": 21000,
                 "gasPrice": w3.eth.gas_price,
                 "nonce": w3.eth.get_transaction_count(acct.address),
-                "chainId": 5042002,
+                "chainId": CHAIN_ID,
             }
             signed = acct.sign_transaction(tx)
             tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
@@ -137,22 +141,92 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
     return await asyncio.get_running_loop().run_in_executor(None, _send)
 
 
-def load_api_key() -> str:
-    key = os.environ.get("LASTFM_API_KEY")
-    if key:
-        return key
+def _read_env_value(name: str) -> Optional[str]:
     try:
-        for line in open(".env"):
-            if line.startswith("LASTFM_API_KEY="):
-                return line.strip().split("=", 1)[1]
+        for line in open(ENV_FILE):
+            s = line.strip()
+            if s.startswith(f"{name}="):
+                return s.split("=", 1)[1]
     except FileNotFoundError:
         pass
+    return None
+
+
+def _write_env_value(name: str, value: str) -> None:
+    """Set name=value in .env, preserving all other lines."""
+    try:
+        with open(ENV_FILE) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    out, found = [], False
+    for line in lines:
+        if line.strip().startswith(f"{name}="):
+            out.append(f"{name}={value}\n")
+            found = True
+        else:
+            out.append(line)
+    if not found:
+        if out and not out[-1].endswith("\n"):
+            out[-1] += "\n"
+        out.append(f"{name}={value}\n")
+
+    with open(ENV_FILE, "w") as f:
+        f.writelines(out)
+
+
+def load_or_create_wallet(explicit_key: Optional[str]) -> tuple[str, str, bool]:
+    """Return (private_key, address, newly_created).
+
+    Precedence: explicit flag/env var → key stored in .env → freshly generated.
+    A generated key is persisted to .env; the key itself is never printed.
+    """
+    from web3 import Web3
+
+    pk = explicit_key or os.environ.get("PRIVATE_KEY") or _read_env_value("PRIVATE_KEY")
+    if pk:
+        return pk, Web3().eth.account.from_key(pk).address, False
+
+    acct = Web3().eth.account.create()
+    pk = acct.key.hex()
+    if not pk.startswith("0x"):  # normalize across eth_account versions
+        pk = "0x" + pk
+    _write_env_value("PRIVATE_KEY", pk)
+    return pk, acct.address, True
+
+
+def get_balance(address: str) -> float:
+    from web3 import Web3
+
+    w3 = Web3(Web3.HTTPProvider(RPC_URL))
+    return float(w3.from_wei(w3.eth.get_balance(Web3.to_checksum_address(address)), "ether"))
+
+
+def _read_private_key() -> tuple[Optional[str], Optional[str]]:
+    """Read private key from env/.env and return (key, address)."""
+    pk = os.environ.get("PRIVATE_KEY") or _read_env_value("PRIVATE_KEY")
+    if not pk:
+        return None, None
+    try:
+        from web3 import Web3
+        acct = Web3().eth.account.from_key(pk)
+        return pk, acct.address
+    except Exception:
+        return None, None
+
+
+def load_api_key() -> str:
+    key = os.environ.get("LASTFM_API_KEY") or _read_env_value("LASTFM_API_KEY")
+    if key:
+        return key
     typer.echo("❌ LASTFM_API_KEY not set. Set env var or create .env file.", err=True)
     raise typer.Exit(1)
 
 
 @app.command()
 def run(
+    show_wallet: bool = typer.Option(False, "--show-wallet", "-w", help="Print agent wallet address and exit"),
     user: str = typer.Option("elias_fisch", "--user", "-u", help="Last.fm username"),
     budget: float = typer.Option(5.0, "--budget", "-b", help="Monthly budget in USD"),
     execute: bool = typer.Option(False, "--execute", "-x", help="Actually send payments on Arc"),
@@ -165,6 +239,19 @@ def run(
 ):
     api_key = load_api_key()
     pk = private_key or os.environ.get("PRIVATE_KEY")
+
+    if show_wallet:
+        pk, address = _read_private_key()
+        if not pk:
+            typer.echo("❌ No PRIVATE_KEY found. Run --execute once to generate one.", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"")
+        typer.echo(f"🔑 Agent Wallet")
+        typer.echo(f"━" * 30)
+        typer.echo(f"  Address:  {address}")
+        typer.echo(f"  Explorer: https://testnet.arcscan.app/address/{address}")
+        typer.echo(f"━" * 30)
+        raise typer.Exit() or _read_env_value("PRIVATE_KEY")
 
     typer.echo(f"""
 🤖 ScrobblePay Agent
@@ -190,10 +277,23 @@ def run(
     typer.echo(f"\n📊 {len(artists)} unique artists\n")
     typer.echo(format_splits(splits, len(tracks), total, budget))
 
-    if execute and splits and pk:
+    if execute and splits:
+        pk, address, created = load_or_create_wallet(private_key)
+        if created:
+            typer.echo("\n🔑 Generated a new agent wallet (saved to .env):")
+            typer.echo(f"   Address: {address}")
+            typer.echo(f"   Fund it: {FAUCET_URL}  (Arc Testnet)")
+            typer.echo("   Then re-run with --execute to send payments.")
+            raise typer.Exit()
+
+        if get_balance(address) == 0:
+            typer.echo(f"\n⚠️  Wallet {address} has 0 USDC — fund it: {FAUCET_URL}")
+            raise typer.Exit()
+
         limit = max_payments if max_payments > 0 else len(splits)
         targets = splits[:limit]
         typer.echo(f"\n💸 Sending {len(targets)} nanopayments concurrently on Arc...")
+        typer.echo(f"   From: {address}")
 
         async def pay_all():
             results = await asyncio.gather(*[
@@ -211,7 +311,7 @@ def run(
         asyncio.run(pay_all())
     elif not execute:
         typer.echo("\n💡 Pass --execute (-x) to send real payments on Arc")
-        typer.echo("   Set PRIVATE_KEY env var for the source wallet.")
+        typer.echo("   The agent auto-generates & funds its own wallet on first --execute run.")
 
     typer.echo("\n✅ Done!")
 
