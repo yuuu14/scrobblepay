@@ -7,11 +7,10 @@ Usage:
 """
 
 import asyncio
-import json
 import os
 from typing import Optional
-import httpx
 
+import httpx
 import typer
 from pydantic import BaseModel
 
@@ -19,21 +18,19 @@ app = typer.Typer()
 LASTFM_API = "https://ws.audioscrobbler.com/2.0/"
 RPC_URL = "https://rpc.testnet.arc.network"
 CHAIN_ID = 5042002
-
-import ssl as _ssl
-_ssl_ctx = _ssl.create_default_context()
-_ssl_ctx.check_hostname = False
-_ssl_ctx.verify_mode = _ssl.CERT_NONE
-
-
-def _web3() -> "Web3":
-    from web3 import Web3
-    from web3.providers.rpc import HTTPProvider
-    import urllib3
-    urllib3.disable_warnings()
-    return Web3(HTTPProvider(RPC_URL, request_kwargs={"verify": False}))
 ENV_FILE = ".env"
 FAUCET_URL = "https://faucet.circle.com/"
+
+# Pin the Arc RPC connection to Let's Encrypt's roots (ISRG Root X1/X2), the CA
+# that issues rpc.testnet.arc.network's cert. Pinning the root — not the leaf or
+# intermediate — survives Let's Encrypt's ~90-day leaf rotation.
+ARC_CA_BUNDLE = os.path.join(os.path.dirname(__file__), "arc_ca.pem")
+
+
+def _web3():
+    from web3 import Web3
+    from web3.providers.rpc import HTTPProvider
+    return Web3(HTTPProvider(RPC_URL, request_kwargs={"verify": ARC_CA_BUNDLE}))
 
 
 class Scrobble(BaseModel):
@@ -130,7 +127,6 @@ async def send_payment(to_address: str, amount_usdc: float, private_key: Optiona
 
     def _send():
         try:
-            from web3 import Web3
             w3 = _web3()
             acct = w3.eth.account.from_key(private_key)
             wei = w3.to_wei(amount_usdc, "ether")
@@ -256,12 +252,12 @@ def run(
         if not pk:
             typer.echo("❌ No PRIVATE_KEY found. Run --execute once to generate one.", err=True)
             raise typer.Exit(1)
-        typer.echo(f"")
-        typer.echo(f"🔑 Agent Wallet")
-        typer.echo(f"━" * 30)
+        typer.echo("")
+        typer.echo("🔑 Agent Wallet")
+        typer.echo("━" * 30)
         typer.echo(f"  Address:  {address}")
         typer.echo(f"  Explorer: https://testnet.arcscan.app/address/{address}")
-        typer.echo(f"━" * 30)
+        typer.echo("━" * 30)
         raise typer.Exit() or _read_env_value("PRIVATE_KEY")
 
     typer.echo(f"""
@@ -308,7 +304,6 @@ def run(
 
         async def pay_all():
             """Send payments sequentially with proper nonce management."""
-            from web3 import Web3
             w3 = _web3()
             acct = w3.eth.account.from_key(pk)
             base_nonce = w3.eth.get_transaction_count(acct.address)
