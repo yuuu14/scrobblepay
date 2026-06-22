@@ -31,3 +31,4 @@ circle-agent/
 # Claude Code internal state (not TASK.md which is intentional)
 .claude/*.json
 .claude/*.log
+.venv/
