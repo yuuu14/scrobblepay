@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScrobblePay 🎵 — AI Agent Nanopayments</title>
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --surface: #1a1a2e;
+      --accent: #6c63ff;
+      --green: #00c853;
+      --text: #e0e0ff;
+      --muted: #8888aa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+    header {
+      text-align: center;
+      padding: 3rem 0 2rem;
+      border-bottom: 1px solid var(--surface);
+      margin-bottom: 2rem;
+    }
+    h1 { font-size: 2.5rem; background: linear-gradient(135deg, var(--accent), var(--green));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: var(--muted); margin-top: 0.5rem; font-size: 1.1rem; }
+    .card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 { font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--accent); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    .stat { text-align: center; padding: 1rem; }
+    .stat .value { font-size: 2rem; font-weight: bold; color: var(--green); }
+    .stat .label { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(108,99,255,0.4); }
+    .btn-green { background: var(--green); color: black; font-weight: bold; }
+    .btn-green:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,200,83,0.4); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    pre {
+      background: #0a0a18;
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-top: 0.5rem;
+    }
+    .inline-code {
+      background: #0a0a18;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    .step { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; }
+    .step .num { color: var(--accent); font-weight: bold; }
+    #output { margin-top: 1rem; }
+    .loading { opacity: 0.6; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+    .badge-arc { background: #16213e; color: #6c63ff; border: 1px solid #6c63ff; }
+    .badge-circle { background: #16213e; color: #00c853; border: 1px solid #00c853; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎵 ScrobblePay</h1>
+      <p class="subtitle">AI Agent for User-Centric Nanopayments on Arc</p>
+      <div style="margin-top: 1rem;">
+        <span class="badge badge-arc">Powered by Arc L1</span>
+        <span class="badge badge-circle">Circle Nanopayments</span>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div class="card stat">
+        <div class="value" id="totalScrobbles">—</div>
+        <div class="label">Total Scrobbles</div>
+      </div>
+      <div class="card stat">
+        <div class="value" id="uniqueArtists">—</div>
+        <div class="label">Unique Artists</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🎯 How It Works</h2>
+      <div class="step">
+        <span class="num">1.</span> Connect your Last.fm account
+      </div>
+      <div class="step">
+        <span class="num">2.</span> An AI agent reads your scrobble history
+      </div>
+      <div class="step">
+        <span class="num">3.</span> It calculates: <span class="inline-code">$5 ÷ your plays</span> per artist
+      </div>
+      <div class="step">
+        <span class="num">4.</span> Sends nanopayments via Circle CLI on Arc L1 ⚡
+      </div>
+      <div class="step">
+        <span class="num">5.</span> Artists receive USDC directly — no middleman
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🎤 Demo: Load Your Scrobble Split</h2>
+      <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <input type="text" id="userInput" value="yuuu14" 
+               style="flex:1; min-width:120px; padding:0.6rem; border-radius:8px; border:1px solid #333; background:#0a0a18; color:white; font-size:1rem;">
+        <input type="number" id="budgetInput" value="5.00" step="0.50" min="0.50"
+               style="width:90px; padding:0.6rem; border-radius:8px; border:1px solid #333; background:#0a0a18; color:white; font-size:1rem;">
+        <button class="btn btn-primary" id="loadBtn">📊 Load Split</button>
+      </div>
+      <div id="output">
+        <p style="color: var(--muted); margin-top: 1rem;">Press "Load Split" to see your data 🎵</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⚡ Try It Yourself</h2>
+      <pre># Install
+uv tool install git+https://github.com/the-canteen-dev/ARC-cli
+npm install -g @circle-fin/cli
+
+# Run the agent
+npm run agent -- --user YOUR_LASTFM_USER --budget 5.0
+
+# With real payments
+circle wallet create
+npm run agent -- --user YOUR_LASTFM_USER --budget 5.0 --execute</pre>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('loadBtn').addEventListener('click', async () => {
+      const user = document.getElementById('userInput').value.trim() || 'yuuu14';
+      const budget = document.getElementById('budgetInput').value || '5.0';
+      const btn = document.getElementById('loadBtn');
+      const output = document.getElementById('output');
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Loading...';
+      output.innerHTML = '<p class="loading">Fetching scrobble data from Last.fm...</p>';
+
+      try {
+        const res = await fetch(`/api/scrobbles?user=${encodeURIComponent(user)}&budget=${budget}`);
+        const data = await res.json();
+
+        if (data.error) {
+          output.innerHTML = `<p style="color: #ff4444;">❌ ${data.error}</p>`;
+          return;
+        }
+
+        document.getElementById('totalScrobbles').textContent = data.totalScrobbles.toLocaleString();
+        document.getElementById('uniqueArtists').textContent = data.uniqueArtists;
+
+        let html = `<h3 style="margin-top:1rem;">Split for $${budget} · ${data.uniqueArtists} artists</h3>`;
+        html += '<pre>';
+        data.split.slice(0, 20).forEach((a, i) => {
+          const bar = '█'.repeat(Math.round(a.share.replace('%','') / 2));
+          html += `${String(i+1).padStart(2)}. ${a.artist.padEnd(25)} ${a.plays.toString().padStart(4)} plays ${a.share.padStart(6)} ${bar}\n`;
+        });
+        if (data.split.length > 20) {
+          html += `     ... and ${data.split.length - 20} more artists\n`;
+        }
+        html += '</pre>';
+
+        html += `<p>💰 Run <code class="inline-code">npm run agent -- --user ${user} --budget ${budget}</code> to execute payments on Arc</p>`;
+
+        output.innerHTML = html;
+      } catch (err) {
+        output.innerHTML = `<p style="color: #ff4444;">❌ Error: ${err.message}</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📊 Load Split';
+      }
+    });
+  </script>
+</body>
+</html>

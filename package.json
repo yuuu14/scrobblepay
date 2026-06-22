@@ -1,0 +1,26 @@
+{
+  "name": "scrobblepay",
+  "version": "1.0.0",
+  "description": "AI agent for user-centric nanopayments based on Last.fm scrobbles",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "agent": "tsx agents/scrobble-agent.ts",
+    "buyer": "tsx src/buyer.ts",
+    "demo": "tsx src/demo.ts",
+    "decode": "tsx src/decode-batch.ts"
+  },
+  "dependencies": {
+    "@circle-fin/cli": "^0.0.5",
+    "@types/node-fetch": "^2.6.13",
+    "express": "^5.2.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
