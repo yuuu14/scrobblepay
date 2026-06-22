@@ -20,13 +20,13 @@
 - **修复**: base_nonce + i 顺序递增，单线程发交易
 - **代价**: 失去了并发的速度优势，但保证了可靠性
 
-### 4. Python 3.14 SSL 兼容性
+### 4. SSL 兼容性（Arc RPC + Last.fm）
 - **问题**: `urllib.request.urlopen` 请求 Last.fm API 和 `web3.py` 请求 Arc RPC 都报 SSL EOF 错误
 - **错误**: `[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol`
-- **原因**: Python 3.14 的 SSL 实现与部分服务器不完全兼容（OpenSSL 3.x 的问题）
+- **原因**: 可能是代理（proxy）环境干扰 Python SSL 库，或 certifi 证书链与系统 OpenSSL 不一致。`curl` 和 `httpx` 不受影响
 - **修复**:
   - Last.fm: 换成 `httpx` 库
-  - Arc RPC: `_web3()` helper 中设置 `verify=False` 绕过
+  - Arc RPC: CA pinning → `agents/arc_ca.pem`（Let's Encrypt ISRG Root X1 + X2），拒绝 `verify=False`
 
 ## 踩坑时间线
 
@@ -37,7 +37,7 @@
 | 3 | 并发 nonce | ~15:00 | 15min | 链上交易不能 naive 并发 |
 | 4 | Arc 要 EIP-1559 | ~15:03 | 15min | 每条链的 tx 格式可能不同 |
 | 5 | Arc gas 不是 21000 | ~15:06 | 5min | native token 转账的 gas 消耗不同 |
-| 6 | Python 3.14 SSL | 全天反复 | 多次 | 换 httpx / 设 verify=False |
+| 6 | SSL — urllib/urllib3 与 Arc RPC 不兼容 | 全天反复 | 多次 | Last.fm → httpx；Arc RPC → CA pinning (`agents/arc_ca.pem`)，不再用 `verify=False` |
 
 ## TODO Before Submission
 
